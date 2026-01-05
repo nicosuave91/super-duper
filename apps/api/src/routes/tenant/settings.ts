@@ -1,84 +1,161 @@
-import type { Request, Response } from "express";
-
-type Db = {
-  query: (sql: string, params?: any[]) => Promise<{ rows: any[] }>;
-};
+import type { FastifyInstance } from "fastify";
+import { requireJwt, requirePermission } from "../../auth/epic2Auth";
+import { getTenantMembershipBySub } from "../../membership";
+import { pool } from "../../db";
+import { AppError } from "../../errors/appError";
 
 function validateHexColor(v: string) {
   return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(v);
 }
 
-export function registerTenantSettingsRoutes(app: any, db: Db) {
-  app.get("/tenant/settings", async (req: Request, res: Response) => {
-    const tenantId = (req as any).tenant?.id;
-    if (!tenantId) return res.status(401).json({ request_id: (req as any).request_id, error_code: "auth.unauthorized", message: "Unauthorized", details: null });
+type TenantSettingsRow = {
+  tenant_id: string;
+  profile: any;
+  brand: any;
+  updated_at: string;
+};
 
-    const existing = await db.query(`select * from tenant_settings where tenant_id = $1`, [tenantId]);
-    if (existing.rows[0]) return res.json({ settings: existing.rows[0] });
+type UpdateBody = {
+  profile?: Record<string, unknown>;
+  brand?: Record<string, unknown>;
+};
 
-    const defaults = {
-      tenant_id: tenantId,
-      profile: {
-        display_name: "",
-        phone: "",
-        email: "",
-        agency_name: "",
-        agent_bio: "",
-        logo_url: null,
+function defaultProfile() {
+  return {
+    display_name: "",
+    phone: "",
+    email: "",
+    agency_name: "",
+    agent_bio: "",
+    logo_url: null,
+  };
+}
+
+function defaultBrand() {
+  // IMPORTANT: avoid hardcoded hex defaults in the API.
+  // null => client falls back to CSS tokens (canonical).
+  return {
+    primary_color: null,
+    accent_color: null,
+    cta_label: "Book a call",
+    disclosure_text: "",
+    calendar_url: null,
+  };
+}
+
+export async function registerTenantSettingsRoutes(app: FastifyInstance) {
+  app.get(
+    "/tenant/settings",
+    {
+      preHandler: async (req) => {
+        await requireJwt(req);
+        requirePermission(req, "tenant.settings.read");
       },
-      brand: {
-        primary_color: "#0059C1",
-accent_color: "#663399",
+    },
+    async (req) => {
+      const sub = req.principal!.sub;
+      const membership = await getTenantMembershipBySub(sub);
+      const tenantId = membership.tenant_id;
 
-        cta_label: "Book a call",
-        disclosure_text: "",
-        calendar_url: null,
+      const existing = await pool.query<TenantSettingsRow>(
+        `select tenant_id, profile, brand, updated_at
+         from tenant_settings
+         where tenant_id = $1
+         limit 1`,
+        [tenantId]
+      );
+      if (existing.rows[0]) return { settings: existing.rows[0] };
+
+      const profile = defaultProfile();
+      const brand = defaultBrand();
+
+      await pool.query(
+        `insert into tenant_settings (tenant_id, profile, brand)
+         values ($1, $2::jsonb, $3::jsonb)`,
+        [tenantId, JSON.stringify(profile), JSON.stringify(brand)]
+      );
+
+      const created = await pool.query<TenantSettingsRow>(
+        `select tenant_id, profile, brand, updated_at
+         from tenant_settings
+         where tenant_id = $1
+         limit 1`,
+        [tenantId]
+      );
+
+      return { settings: created.rows[0] };
+    }
+  );
+
+  app.put<{ Body: UpdateBody }>(
+    "/tenant/settings",
+    {
+      preHandler: async (req) => {
+        await requireJwt(req);
+        requirePermission(req, "tenant.settings.write");
       },
-      updated_at: new Date().toISOString(),
-    };
+    },
+    async (req) => {
+      const sub = req.principal!.sub;
+      const membership = await getTenantMembershipBySub(sub);
+      const tenantId = membership.tenant_id;
 
-    await db.query(
-      `insert into tenant_settings (tenant_id, profile, brand) values ($1, $2::jsonb, $3::jsonb)`,
-      [tenantId, JSON.stringify(defaults.profile), JSON.stringify(defaults.brand)]
-    );
+      const body = req.body ?? {};
+      const errors: { field: string; message: string }[] = [];
 
-    const created = await db.query(`select * from tenant_settings where tenant_id = $1`, [tenantId]);
-    res.json({ settings: created.rows[0] });
-  });
+      const existing = await pool.query<TenantSettingsRow>(
+        `select tenant_id, profile, brand, updated_at
+         from tenant_settings
+         where tenant_id = $1
+         limit 1`,
+        [tenantId]
+      );
 
-  app.put("/tenant/settings", async (req: Request, res: Response) => {
-    const tenantId = (req as any).tenant?.id;
-    if (!tenantId) return res.status(401).json({ request_id: (req as any).request_id, error_code: "auth.unauthorized", message: "Unauthorized", details: null });
+      const current =
+        existing.rows[0] ?? {
+          tenant_id: tenantId,
+          profile: defaultProfile(),
+          brand: defaultBrand(),
+          updated_at: new Date().toISOString(),
+        };
 
-    const body = req.body ?? {};
-    const errors: { field: string; message: string }[] = [];
+      const profile = { ...(current.profile ?? {}), ...(body.profile ?? {}) };
+      const brand = { ...(current.brand ?? {}), ...(body.brand ?? {}) };
 
-    const existing = await db.query(`select * from tenant_settings where tenant_id = $1`, [tenantId]);
-    const current = existing.rows[0];
+      if (brand.primary_color && !validateHexColor(String(brand.primary_color))) {
+        errors.push({ field: "brand.primary_color", message: "Invalid color" });
+      }
+      if (brand.accent_color && !validateHexColor(String(brand.accent_color))) {
+        errors.push({ field: "brand.accent_color", message: "Invalid color" });
+      }
 
-    const profile = { ...(current?.profile ?? {}), ...(body.profile ?? {}) };
-    const brand = { ...(current?.brand ?? {}), ...(body.brand ?? {}) };
+      if (String(profile.display_name ?? "").length > 80) errors.push({ field: "profile.display_name", message: "Max 80 characters" });
+      if (String(profile.agency_name ?? "").length > 120) errors.push({ field: "profile.agency_name", message: "Max 120 characters" });
+      if (String(profile.agent_bio ?? "").length > 800) errors.push({ field: "profile.agent_bio", message: "Max 800 characters" });
+      if (String(brand.cta_label ?? "").length > 40) errors.push({ field: "brand.cta_label", message: "Max 40 characters" });
+      if (String(brand.disclosure_text ?? "").length > 1200) errors.push({ field: "brand.disclosure_text", message: "Max 1200 characters" });
 
-    if (brand.primary_color && !validateHexColor(String(brand.primary_color))) errors.push({ field: "brand.primary_color", message: "Invalid color" });
-    if (brand.accent_color && !validateHexColor(String(brand.accent_color))) errors.push({ field: "brand.accent_color", message: "Invalid color" });
+      if (errors.length) return { ok: false, errors };
 
-    if (String(profile.display_name ?? "").length > 80) errors.push({ field: "profile.display_name", message: "Max 80 characters" });
-    if (String(profile.agency_name ?? "").length > 120) errors.push({ field: "profile.agency_name", message: "Max 120 characters" });
-    if (String(profile.agent_bio ?? "").length > 800) errors.push({ field: "profile.agent_bio", message: "Max 800 characters" });
-    if (String(brand.cta_label ?? "").length > 40) errors.push({ field: "brand.cta_label", message: "Max 40 characters" });
-    if (String(brand.disclosure_text ?? "").length > 1200) errors.push({ field: "brand.disclosure_text", message: "Max 1200 characters" });
+      await pool.query(
+        `insert into tenant_settings (tenant_id, profile, brand)
+         values ($1, $2::jsonb, $3::jsonb)
+         on conflict (tenant_id)
+         do update set profile = excluded.profile, brand = excluded.brand, updated_at = now()`,
+        [tenantId, JSON.stringify(profile), JSON.stringify(brand)]
+      );
 
-    if (errors.length) return res.status(200).json({ ok: false, errors });
+      const updated = await pool.query<TenantSettingsRow>(
+        `select tenant_id, profile, brand, updated_at
+         from tenant_settings
+         where tenant_id = $1
+         limit 1`,
+        [tenantId]
+      );
 
-    await db.query(
-      `insert into tenant_settings (tenant_id, profile, brand)
-       values ($1, $2::jsonb, $3::jsonb)
-       on conflict (tenant_id)
-       do update set profile = excluded.profile, brand = excluded.brand, updated_at = now()`,
-      [tenantId, JSON.stringify(profile), JSON.stringify(brand)]
-    );
+      if (!updated.rows[0]) throw new AppError(500, "error", "Failed to load updated settings");
 
-    const updated = await db.query(`select * from tenant_settings where tenant_id = $1`, [tenantId]);
-    res.json({ ok: true, settings: updated.rows[0] });
-  });
+      return { ok: true, settings: updated.rows[0] };
+    }
+  );
 }
