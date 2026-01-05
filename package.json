@@ -1,0 +1,52 @@
+{
+  "name": "superapp",
+  "private": true,
+  "packageManager": "pnpm@10.4.1",
+  "volta": {
+    "node": "22.20.0",
+    "pnpm": "10.4.1"
+  },
+  "engines": {
+    "node": ">=22.20.0",
+    "pnpm": ">=9.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+  "dev": "turbo dev --filter=api --filter=marketing-site --filter=admin-portal --filter=tenant-portal",
+  "dev:reset:win": "taskkill /IM node.exe /F && turbo dev --filter=api --filter=marketing-site --filter=admin-portal --filter=tenant-portal",
+
+  "build": "turbo build",
+  "lint": "turbo lint",
+  "test": "turbo test",
+  "typecheck": "turbo typecheck",
+
+  "clean:all": "turbo clean",
+  "clean:deps:win": "rmdir /s /q node_modules",
+  "clean:deps:unix": "rm -rf node_modules",
+
+  "kill:node": "taskkill /IM node.exe /F",
+  "prepare": "husky",
+
+  "lint:colors": "grep -RIn --exclude-dir=node_modules --exclude-dir=dist --exclude='*.lock' -E '#[0-9a-fA-F]{3,8}\\\\b' apps packages | grep -v 'packages/config/tokens' || true",
+  "lint:grays": "grep -RIn --exclude-dir=node_modules --exclude-dir=dist -E '\\\\b(text|bg|border)-gray-[0-9]+' apps || true"
+},
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "cross-env": "^10.1.0",
+    "husky": "^9.1.7",
+    "turbo": "^2.7.2",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^2.2.12"
+  },
+  "dependencies": {
+    "@auth0/auth0-vue": "^2.5.0",
+    "dotenv": "^17.2.3",
+    "tailwind": "^4.0.0"
+  }
+}

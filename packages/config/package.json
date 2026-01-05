@@ -1,0 +1,10 @@
+{
+  "name": "@package/config",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./tokens/colors.css": "./tokens/colors.css",
+    "./tailwind/preset": "./tailwind/preset.cjs"
+  }
+}

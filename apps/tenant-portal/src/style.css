@@ -1,0 +1,45 @@
+@config "../tailwind.config.cjs";
+@import "@package/config/tokens/colors.css";
+@import "tailwindcss";
+
+
+
+
+:root {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /*
+    Do NOT hardcode brand defaults here.
+    Canonical defaults live in packages/config/tokens/colors.css.
+    Runtime overrides are applied by the theme store.
+  */
+
+  --color-brand-primary-soft: color-mix(in srgb, var(--color-brand-primary) 12%, white);
+  --color-brand-primary-hover: color-mix(in srgb, var(--color-brand-primary) 88%, black);
+  --color-focus-ring: color-mix(in srgb, var(--color-brand-primary) 55%, white);
+}
+
+/* Disabled primary buttons should remain visible */
+button.bg-brand-primary:disabled,
+button.bg-brand-primary[disabled] {
+  opacity: 0.6;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-alt);
+  color: var(--color-text-default);
+}
+
+#app {
+  min-height: 100vh;
+}

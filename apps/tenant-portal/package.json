@@ -1,0 +1,35 @@
+{
+  "name": "tenant-portal",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "vue-tsc -p tsconfig.typecheck.json --noEmit",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "echo \"(no lint configured)\" && exit 0"
+  },
+  "dependencies": {
+    "@auth0/auth0-spa-js": "^2.11.0",
+    "@auth0/auth0-vue": "^2.5.0",
+    "@superapp/ui": "workspace:*",
+    "lucide-vue-next": "^0.562.0",
+    "pinia": "^2.3.1",
+    "vue": "^3.5.24",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@package/config": "workspace:*",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^24.10.1",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/tsconfig": "^0.8.1",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4",
+    "vue-tsc": "^2.2.12"
+  }
+}

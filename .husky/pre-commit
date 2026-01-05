@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+pnpm -w lint
+pnpm -w typecheck

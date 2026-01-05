@@ -1,0 +1,42 @@
+:root {
+  /* Brand */
+  --color-brand-primary: #0059C1;
+  --color-brand-primary-hover: #00418E;
+  --color-brand-primary-pressed: #002A5B;
+  --color-brand-primary-soft: #EAF2FF;
+
+  --color-brand-accent: #663399;
+  --color-brand-accent-soft: #F2EBFA;
+  --color-brand-neutral: #64748B;
+  --color-brand-neutral-soft: #EEF2F6;
+
+  /* Neutrals */
+  --color-text-strong: #0A0A0A;
+  --color-text-default: #1F1F1F;
+  --color-text-muted: #666666;
+
+  /* Surfaces */
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F7F8FA;
+
+  /* Borders */
+  --color-border: #D0D5DD;
+  --color-border-subtle: #E6E8EB;
+
+  /* Semantic */
+  --color-success: #145523;
+  --color-success-bg: #E9F7EE;
+
+  --color-warning: #5A3B00;
+  --color-warning-bg: #FFF4E5;
+
+  --color-danger: #A02622;
+  --color-danger-bg: #FDEEEE;
+
+  --color-info: #003A7A;
+  --color-info-bg: #E6F0FF;
+
+  /* Focus (optional) */
+  --color-ring: var(--color-brand-primary);
+  --color-ring-offset: var(--color-surface);
+}

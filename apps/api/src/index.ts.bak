@@ -1,0 +1,84 @@
+import fastify from 'fastify';
+import { getOrCreateRequestId } from './observability/requestContext.js';
+import { loadEnv } from './env.js';
+import { AppError } from './errors/AppError.js';
+import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Loads apps/api/.env reliably
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+
+const env = loadEnv();
+const app = fastify({ logger: true });
+
+app.addHook('onRequest', async (req, reply) => {
+  const requestId = getOrCreateRequestId(req);
+  req.headers['x-request-id'] = requestId;
+  reply.header('x-request-id', requestId);
+});
+
+app.addHook('onResponse', async (req, reply) => {
+  // Ensure request_id is always visible in logs
+  app.log.info(
+    {
+      request_id: req.headers['x-request-id'],
+      method: req.method,
+      url: req.url,
+      statusCode: reply.statusCode
+    },
+    'request_complete'
+  );
+});
+
+app.setErrorHandler((err, req, reply) => {
+  const request_id = req.headers['x-request-id'];
+
+  if (err instanceof AppError) {
+    app.log.warn({ request_id, error_code: err.code, details: err.details }, err.message);
+    return reply.status(err.status).send({
+      request_id,
+      error_code: err.code,
+      message: err.message,
+      details: err.details
+    });
+  }
+
+  app.log.error({ request_id }, err);
+  return reply.status(500).send({
+    request_id,
+    error_code: 'internal.error',
+    message: 'Unexpected error'
+  });
+});
+
+
+app.addHook('onRequest', async (req, reply) => {
+ const requestId = getOrCreateRequestId(req);
+ req.headers['x-request-id'] = requestId;
+ reply.header('x-request-id', requestId);
+});
+
+app.addHook('onResponse', async (req, reply) => {
+ // Ensure request_id is always visible in logs
+ app.log.info(
+	{
+	request_id: req.headers['x-request-id'],
+	method: req.method,
+	url: req.url,
+	statusCode: reply.statusCode
+	},
+	'request_complete'
+	);
+});
+app.get('/health', async () => ({ ok: true }));
+
+app.listen({ port: 3000, host: '0.0.0.0' }).catch((err) => {
+  app.log.error(err);
+  process.exit(1);
+});

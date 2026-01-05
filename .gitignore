@@ -1,0 +1,13 @@
+NUL
+nul
+node_modules
+.DS_Store
+dist
+build
+coverage
+.turbo
+.vite
+.env
+.env.*.local
+*.log
+pnpm-debug.log*

@@ -1,0 +1,14 @@
+{
+  "name": "@superapp/ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared UI primitives for SuperApp (token-driven, Tailwind-based).",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  }
+}
