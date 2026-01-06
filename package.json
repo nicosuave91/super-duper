@@ -15,24 +15,21 @@
     "packages/*"
   ],
   "scripts": {
-  "dev": "turbo dev --filter=api --filter=marketing-site --filter=admin-portal --filter=tenant-portal",
-  "dev:reset:win": "taskkill /IM node.exe /F && turbo dev --filter=api --filter=marketing-site --filter=admin-portal --filter=tenant-portal",
-
-  "build": "turbo build",
-  "lint": "turbo lint",
-  "test": "turbo test",
-  "typecheck": "turbo typecheck",
-
-  "clean:all": "turbo clean",
-  "clean:deps:win": "rmdir /s /q node_modules",
-  "clean:deps:unix": "rm -rf node_modules",
-
-  "kill:node": "taskkill /IM node.exe /F",
-  "prepare": "husky",
-
-  "lint:colors": "grep -RIn --exclude-dir=node_modules --exclude-dir=dist --exclude='*.lock' -E '#[0-9a-fA-F]{3,8}\\\\b' apps packages | grep -v 'packages/config/tokens' || true",
-  "lint:grays": "grep -RIn --exclude-dir=node_modules --exclude-dir=dist -E '\\\\b(text|bg|border)-gray-[0-9]+' apps || true"
-},
+    "dev": "turbo dev --filter=api --filter=marketing-site --filter=admin-portal --filter=tenant-portal",
+    "dev:reset:win": "taskkill /IM node.exe /F && turbo dev --filter=api --filter=marketing-site --filter=admin-portal --filter=tenant-portal",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "clean:all": "turbo clean",
+    "clean:deps:win": "rmdir /s /q node_modules",
+    "clean:deps:unix": "rm -rf node_modules",
+    "kill:node": "taskkill /IM node.exe /F",
+    "prepare": "husky",
+    "lint:colors": "grep -RIn --exclude-dir=node_modules --exclude-dir=dist --exclude='*.lock' -E '#[0-9a-fA-F]{3,8}\\\\b' apps packages | grep -v 'packages/config/tokens' || true",
+    "lint:grays": "grep -RIn --exclude-dir=node_modules --exclude-dir=dist -E '\\\\b(text|bg|border)-gray-[0-9]+' apps || true",
+    "check:tokens": "node scripts/check-tokens.mjs"
+  },
   "author": "",
   "license": "MIT",
   "devDependencies": {
