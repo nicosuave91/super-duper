@@ -1,41 +1,83 @@
+import type { FastifyInstance } from "fastify";
 import crypto from "crypto";
-import type { Request, Response } from "express";
 
-type Db = {
-  query: (sql: string, params?: any[]) => Promise<{ rows: any[] }>;
+import { pool } from "../../db";
+import { requireJwt, requirePermission } from "../../auth/epic2Auth";
+import { getTenantMembershipBySub } from "../../membership";
+
+type CreateExportBody = {
+  // optional future expansion
+  site_id?: string;
+  query?: Record<string, unknown>;
 };
 
-export function registerTenantLeadExportRoutes(app: any, db: Db) {
-  app.post("/tenant/leads/export", async (req: Request, res: Response) => {
-    const tenantId = (req as any).tenant?.id;
-    if (!tenantId) return res.status(401).json({ request_id: (req as any).request_id, error_code: "auth.unauthorized", message: "Unauthorized", details: null });
+export async function registerTenantLeadExportRoutes(app: FastifyInstance) {
+  /**
+   * Create export job
+   * POST /tenant/leads/export
+   * Body: { site_id?: uuid, query?: {...} }
+   */
+  app.post<{ Body: CreateExportBody }>(
+    "/tenant/leads/export",
+    {
+      preHandler: async (req) => {
+        await requireJwt(req);
+        // keep simple: exporting is a leads read concern
+        requirePermission(req, "tenant.leads.read");
+      },
+    },
+    async (req, reply) => {
+      const sub = req.principal!.sub;
+      const { tenant_id } = await getTenantMembershipBySub(sub);
 
-    const jobId = crypto.randomUUID();
-    const payload = { query: req.body?.query ?? {} };
+      const jobId = crypto.randomUUID();
+      const payload = {
+        site_id: req.body?.site_id ?? null,
+        query: req.body?.query ?? {},
+      };
 
-    await db.query(
-      `insert into jobs (id, tenant_id, type, state, payload) values ($1, $2, 'lead_export', 'queued', $3::jsonb)`,
-      [jobId, tenantId, JSON.stringify(payload)]
-    );
+      await pool.query(
+        `insert into jobs (id, tenant_id, type, state, payload)
+         values ($1, $2, 'lead_export', 'queued', $3::jsonb)`,
+        [jobId, tenant_id, JSON.stringify(payload)]
+      );
 
-    res.json({ ok: true, job_id: jobId });
-  });
+      return reply.send({ ok: true, job_id: jobId });
+    }
+  );
 
-  app.get("/tenant/leads/export/:jobId", async (req: Request, res: Response) => {
-    const tenantId = (req as any).tenant?.id;
-    if (!tenantId) return res.status(401).json({ request_id: (req as any).request_id, error_code: "auth.unauthorized", message: "Unauthorized", details: null });
+  /**
+   * Poll export job status
+   * GET /tenant/leads/export/:jobId
+   */
+  app.get(
+    "/tenant/leads/export/:jobId",
+    {
+      preHandler: async (req) => {
+        await requireJwt(req);
+        requirePermission(req, "tenant.leads.read");
+      },
+    },
+    async (req, reply) => {
+      const sub = req.principal!.sub;
+      const { tenant_id } = await getTenantMembershipBySub(sub);
 
-    const jobId = req.params.jobId;
+      const jobId = String((req.params as any)?.jobId ?? "").trim();
+      if (!jobId) return reply.code(400).send({ message: "jobId is required" });
 
-    const jobRes = await db.query(
-      `select id, state, result from jobs where id = $1 and tenant_id = $2 and type = 'lead_export'`,
-      [jobId, tenantId]
-    );
-    const job = jobRes.rows[0];
-    if (!job) return res.status(404).json({ request_id: (req as any).request_id, error_code: "job.not_found", message: "Job not found", details: null });
+      const jobRes = await pool.query(
+        `select id, state, result
+         from jobs
+         where id = $1 and tenant_id = $2 and type = 'lead_export'
+         limit 1`,
+        [jobId, tenant_id]
+      );
 
-    const url = job.result?.url ?? null;
+      const job = jobRes.rows[0];
+      if (!job) return reply.code(404).send({ message: "Job not found" });
 
-    res.json({ ok: true, state: job.state, url });
-  });
+      const url = job.result?.url ?? null;
+      return reply.send({ ok: true, state: job.state, url });
+    }
+  );
 }
