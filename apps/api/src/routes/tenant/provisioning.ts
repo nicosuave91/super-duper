@@ -1,57 +1,65 @@
-import type { Request, Response } from "express";
+import type { FastifyInstance } from "fastify";
+import crypto from "crypto";
 
-type Db = {
-  query: (sql: string, params?: any[]) => Promise<{ rows: any[] }>;
-};
+import { pool } from "../../db";
+import { requireJwt, requirePermission } from "../../auth/epic2Auth";
+import { getTenantMembershipBySub } from "../../membership";
 
-export function registerTenantProvisioningRoutes(app: any, db: Db) {
-  app.get("/tenant/provisioning/status", async (req: Request, res: Response) => {
-    const tenantId = (req as any).tenant?.id;
-    if (!tenantId) return res.status(401).json({ request_id: (req as any).request_id, error_code: "auth.unauthorized", message: "Unauthorized", details: null });
+export async function registerTenantProvisioningRoutes(app: FastifyInstance) {
+  /**
+   * Provisioning status feed for tenant
+   * GET /tenant/provisioning/status
+   */
+  app.get(
+    "/tenant/provisioning/status",
+    {
+      preHandler: async (req) => {
+        await requireJwt(req);
+        // status read is a basic tenant read concern
+        requirePermission(req, "tenant.read");
+      },
+    },
+    async (req, reply) => {
+      const sub = req.principal!.sub;
+      const { tenant_id } = await getTenantMembershipBySub(sub);
 
-    const events = await db.query(
-      `select id, created_at, title, message, stage, correlation_id
-       from provisioning_events
-       where tenant_id = $1
-       order by created_at desc
-       limit 50`,
-      [tenantId]
-    );
+      const eventsRes = await pool.query(
+        `select id, created_at, title, message, stage, correlation_id
+         from provisioning_events
+         where tenant_id = $1
+         order by created_at desc
+         limit 200`,
+        [tenant_id]
+      );
 
-    const summary = await db.query(
-      `select site_stage, domain_stage, dns_stage, updated_at
-       from tenant_provisioning_status
-       where tenant_id = $1`,
-      [tenantId]
-    );
+      return reply.send({ ok: true, events: eventsRes.rows });
+    }
+  );
 
-    const row = summary.rows[0] ?? {
-      site_stage: "queued",
-      domain_stage: "queued",
-      dns_stage: "queued",
-      updated_at: new Date().toISOString(),
-    };
+  /**
+   * Retry provisioning
+   * POST /tenant/provisioning/retry
+   */
+  app.post(
+    "/tenant/provisioning/retry",
+    {
+      preHandler: async (req) => {
+        await requireJwt(req);
+        // retry is effectively a tenant setting/change operation
+        requirePermission(req, "tenant.settings.write");
+      },
+    },
+    async (req, reply) => {
+      const sub = req.principal!.sub;
+      const { tenant_id } = await getTenantMembershipBySub(sub);
 
-    res.json({
-      tenant_id: tenantId,
-      site_stage: row.site_stage,
-      domain_stage: row.domain_stage,
-      dns_stage: row.dns_stage,
-      events: events.rows,
-      last_updated_at: row.updated_at,
-    });
-  });
+      await pool.query(
+        `insert into provisioning_commands (id, tenant_id, command, created_at)
+         values ($1, $2, $3, now())`,
+        [crypto.randomUUID(), tenant_id, "retry_provisioning"]
+      );
 
-  app.post("/tenant/provisioning/retry", async (req: Request, res: Response) => {
-    const tenantId = (req as any).tenant?.id;
-    if (!tenantId) return res.status(401).json({ request_id: (req as any).request_id, error_code: "auth.unauthorized", message: "Unauthorized", details: null });
-
-    await db.query(
-      `insert into provisioning_commands (id, tenant_id, command, created_at)
-       values ($1, $2, $3, now())`,
-      [(globalThis.crypto as any)?.randomUUID?.() ?? require("crypto").randomUUID(), tenantId, "retry_provisioning"]
-    );
-
-    res.json({ ok: true });
-  });
+      return reply.send({ ok: true });
+    }
+  );
 }
