@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   ci:
-    name: Lint • Typecheck • Test • Build
+    name: Lint • Tokens • Typecheck • Test • Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -19,21 +19,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node (uses package.json engines)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: "pnpm"
-          
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-        version: 8
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      # Optional: turbo caching (safe + fast)
       - name: Turbo cache
         uses: actions/cache@v4
         with:
@@ -46,6 +43,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Token enforcement (no hardcoded hex / grays)
+        run: pnpm check:tokens
 
       - name: Typecheck
         run: pnpm typecheck
