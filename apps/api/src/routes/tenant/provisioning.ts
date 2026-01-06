@@ -6,57 +6,71 @@ import { requireJwt, requirePermission } from "../../auth/epic2Auth";
 import { getTenantMembershipBySub } from "../../membership";
 
 export async function registerTenantProvisioningRoutes(app: FastifyInstance) {
-  /**
-   * Provisioning status feed for tenant
-   * GET /tenant/provisioning/status
-   */
   app.get(
     "/tenant/provisioning/status",
     {
       preHandler: async (req) => {
         await requireJwt(req);
-        // status read is a basic tenant read concern
         requirePermission(req, "tenant.read");
       },
     },
     async (req, reply) => {
       const sub = req.principal!.sub;
-      const { tenant_id } = await getTenantMembershipBySub(sub);
+      const membership = await getTenantMembershipBySub(sub);
 
-      const eventsRes = await pool.query(
+      const tenantId = membership.tenant_id;
+
+      const events = await pool.query(
         `select id, created_at, title, message, stage, correlation_id
          from provisioning_events
          where tenant_id = $1
          order by created_at desc
-         limit 200`,
-        [tenant_id]
+         limit 50`,
+        [tenantId]
       );
 
-      return reply.send({ ok: true, events: eventsRes.rows });
+      const summary = await pool.query(
+        `select site_stage, domain_stage, dns_stage, updated_at
+         from tenant_provisioning_status
+         where tenant_id = $1
+         limit 1`,
+        [tenantId]
+      );
+
+      const row = summary.rows[0] ?? {
+        site_stage: "queued",
+        domain_stage: "queued",
+        dns_stage: "queued",
+        updated_at: new Date().toISOString(),
+      };
+
+      return reply.send({
+        tenant_id: tenantId,
+        site_stage: row.site_stage,
+        domain_stage: row.domain_stage,
+        dns_stage: row.dns_stage,
+        events: events.rows,
+        last_updated_at: row.updated_at,
+      });
     }
   );
 
-  /**
-   * Retry provisioning
-   * POST /tenant/provisioning/retry
-   */
   app.post(
     "/tenant/provisioning/retry",
     {
       preHandler: async (req) => {
         await requireJwt(req);
-        // retry is effectively a tenant setting/change operation
         requirePermission(req, "tenant.settings.write");
       },
     },
     async (req, reply) => {
       const sub = req.principal!.sub;
-      const { tenant_id } = await getTenantMembershipBySub(sub);
+      const membership = await getTenantMembershipBySub(sub);
 
       await pool.query(
         `insert into provisioning_commands (id, tenant_id, command, created_at)
          values ($1, $2, $3, now())`,
-        [crypto.randomUUID(), tenant_id, "retry_provisioning"]
+        [crypto.randomUUID(), membership.tenant_id, "retry_provisioning"]
       );
 
       return reply.send({ ok: true });
