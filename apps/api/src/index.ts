@@ -1,18 +1,20 @@
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
+
+import { requestId, getRequestId } from "./auth/epic2Auth";
+import { AppError } from "./errors/appError";
 
 import { registerDevAuthRoutes } from "./devAuth";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerTenantMeRoutes } from "./routes/tenant/me";
 import { registerTenantRoutes } from "./routes/tenant";
 
-import { requestId, getRequestId } from "./auth/epic2Auth";
-import { AppError } from "./errors/appError";
-
 const app = Fastify({ logger: true });
 
-const isDev = (process.env.NODE_ENV ?? "development") !== "production";
+const isProd = process.env.NODE_ENV === "production" || process.env.APP_ENV === "production";
 const normalize = (u: string) => u.replace(/\/$/, "");
 
 function buildAllowedOrigins() {
@@ -28,11 +30,25 @@ function buildAllowedOrigins() {
 async function main() {
   const allowedOrigins = buildAllowedOrigins();
 
+  // Security headers (API-safe defaults)
+  await app.register(helmet, {
+    contentSecurityPolicy: false, // API does not serve HTML
+  });
+
+  // Global rate limiting: very high in dev, sane in prod.
+  await app.register(rateLimit, {
+    global: true,
+    max: isProd ? 1000 : 100000,
+    timeWindow: "1 minute",
+    ban: isProd ? 5 : 0,
+    allowList: () => false,
+  });
+
   await app.register(cors, {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
 
-      if (isDev) {
+      if (!isProd) {
         const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
         return cb(null, isLocalhost);
       }
@@ -45,10 +61,10 @@ async function main() {
     exposedHeaders: ["x-request-id"],
   });
 
-  // Request ID on every request/response
+  // Request-id on every request/response
   app.addHook("onRequest", requestId);
 
-  // Consistent error envelope
+  // Consistent error envelope + Zod/AppError support
   app.setErrorHandler((err: any, req, reply) => {
     const request_id = getRequestId(req);
 
@@ -68,7 +84,7 @@ async function main() {
 
     return reply.code(status).send({
       request_id,
-      error_code: "error",
+      error_code: "internal.error",
       message,
       details: null,
     });
@@ -76,11 +92,11 @@ async function main() {
 
   app.get("/health", async () => ({ ok: true }));
 
-  // ✅ Routes
-  await registerDevAuthRoutes(app); // /dev/token (HS256 dev JWT; non-prod only)
-  await registerAuthRoutes(app); // /auth/login (dev-only if you gated it)
-  await registerTenantMeRoutes(app); // /tenant/me
-  await registerTenantRoutes(app); // /tenant/* (leads, export, settings, provisioning, leads v2)
+  // Routes
+  await registerDevAuthRoutes(app);
+  await registerAuthRoutes(app);
+  await registerTenantMeRoutes(app);
+  await registerTenantRoutes(app);
 
   const port = Number(process.env.API_PORT ?? process.env.PORT ?? 3002);
   const host = process.env.API_HOST ?? process.env.HOST ?? "0.0.0.0";
